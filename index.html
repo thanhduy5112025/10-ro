@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LifeCode Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1, h2, h3 {
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .player {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .turn {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 5px solid #007bff;
+            border-radius: 4px;
+        }
+        .report {
+            color: #555;
+            margin: 5px 0;
+            padding: 5px;
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .winner {
+            color: green;
+            font-weight: bold;
+        }
+        .death {
+            color: red;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 100%;
+            max-width: 300px;
+        }
+        .flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .flex button {
+            flex: 1;
+            min-width: 120px;
+        }
+        #guess-form {
+            margin-top: 20px;
+        }
+        #reports {
+            margin-top: 30px;
+        }
+        /* Responsive */
+        @media (max-width: 600px) {
+            body {
+                margin: 10px;
+            }
+            .container {
+                padding: 15px;
+            }
+            button {
+                width: 100%;
+                margin: 5px 0;
+            }
+            input {
+                width: 100%;
+                max-width: none;
+            }
+            .flex button {
+                flex: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>LifeCode Game</h1>
+    <div id="setup">
+        <h2>Thiết lập người chơi</h2>
+        <div id="players-list">
+            <!-- Players will be added here -->
+        </div>
+        <button onclick="addPlayer()">Thêm người chơi</button>
+        <button onclick="startGame()">Bắt đầu trò chơi</button>
+    </div>
+
+    <div id="game" style="display: none;">
+        <h2>Trò chơi đang diễn ra</h2>
+        <div id="status"></div>
+        <div id="turn-info"></div>
+        <div id="guess-form" style="display: none;">
+            <label>Mục tiêu: <span id="target-name"></span></label><br>
+            <input type="text" id="guess-input" placeholder="Nhập 10 chữ số" maxlength="10"><br>
+            <button onclick="submitGuess()">Đoán</button>
+        </div>
+        <div id="reports"></div>
+    </div>
+
+    <script>
+        let players = [];
+        let game = null;
+
+        class Player {
+            constructor(name, code) {
+                this.name = name;
+                this.code = code;
+                this.alive = true;
+            }
+        }
+
+        class LifeCodeGame {
+            constructor(players) {
+                this.players = players;
+                this.currentIndex = 0;
+                this.turn = 1;
+                this.reports = [];
+            }
+
+            evaluateGuess(secret, guess) {
+                if (secret.length !== guess.length) return [0, 0];
+                let correctPosition = 0;
+                for (let i = 0; i < secret.length; i++) {
+                    if (secret[i] === guess[i]) correctPosition++;
+                }
+                let secretCount = {};
+                let guessCount = {};
+                for (let char of secret) secretCount[char] = (secretCount[char] || 0) + 1;
+                for (let char of guess) guessCount[char] = (guessCount[char] || 0) + 1;
+                let correctTotal = 0;
+                for (let d in secretCount) {
+                    correctTotal += Math.min(secretCount[d], guessCount[d] || 0);
+                }
+                let correctWrongPosition = correctTotal - correctPosition;
+                return [correctPosition, correctWrongPosition];
+            }
+
+            getAliveIndices() {
+                return this.players.map((p, i) => p.alive ? i : -1).filter(i => i !== -1);
+            }
+
+            getNeighbors(index) {
+                let alive = this.getAliveIndices();
+                let pos = alive.indexOf(index);
+                let left = alive[pos - 1 < 0 ? alive.length - 1 : pos - 1];
+                let right = alive[(pos + 1) % alive.length];
+                return [left, right];
+            }
+
+            nextTurn() {
+                let alive = this.getAliveIndices();
+                if (alive.length === 0) return false;
+                if (alive.indexOf(this.currentIndex) === -1) this.currentIndex = alive[0];
+                let attacker = this.players[this.currentIndex];
+                let [leftI, rightI] = this.getNeighbors(this.currentIndex);
+                updateTurnInfo(attacker.name, this.players[leftI].name, this.players[rightI].name);
+                return true;
+            }
+
+            makeGuess(targetIndex, guess) {
+                let attacker = this.players[this.currentIndex];
+                let target = this.players[targetIndex];
+                let [cp, cwp] = this.evaluateGuess(target.code, guess);
+                let report = `${attacker.name} đoán ${target.name} là ${guess}, ${cp} đúng vị trí | ${cwp} đúng số sai vị trí`;
+                this.reports.push(report);
+                updateReports();
+                if (cp === 10) {
+                    target.alive = false;
+                    let deathReport = `${target.name} đã bị loại.`;
+                    this.reports.push(deathReport);
+                    updateReports();
+                }
+                // Chuyển lượt
+                let alive = this.getAliveIndices();
+                if (alive.length > 0) {
+                    let idx = alive.indexOf(this.currentIndex);
+                    this.currentIndex = alive[(idx + 1) % alive.length];
+                }
+                this.turn++;
+                return this.checkEnd();
+            }
+
+            checkEnd() {
+                let alive = this.players.filter(p => p.alive);
+                if (alive.length === 1) {
+                    let final = `NGƯỜI CHIẾN THẮNG: ${alive[0].name}`;
+                    this.reports.push(final);
+                    updateReports();
+                    return true;
+                }
+                if (alive.length === 0) {
+                    let final = "TẤT CẢ NGƯỜI CHƠI ĐÃ BỊ LOẠI — KHÔNG AI THẮNG.";
+                    this.reports.push(final);
+                    updateReports();
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        function addPlayer() {
+            let name = prompt("Tên người chơi:");
+            let code = prompt("Mã số (10 chữ số):");
+            if (name && code && code.length === 10) {
+                players.push(new Player(name, code));
+                updatePlayersList();
+            }
+        }
+
+        function updatePlayersList() {
+            let list = document.getElementById('players-list');
+            list.innerHTML = '';
+            players.forEach((p, i) => {
+                list.innerHTML += `<div class="player">${i+1}. ${p.name} - ${p.code}</div>`;
+            });
+        }
+
+        function startGame() {
+            if (players.length < 2) {
+                alert("Cần ít nhất 2 người chơi!");
+                return;
+            }
+            game = new LifeCodeGame(players);
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            updateStatus();
+            game.nextTurn();
+        }
+
+        function updateStatus() {
+            let status = document.getElementById('status');
+            let alive = game.getAliveIndices();
+            status.innerHTML = `<h3>Còn ${alive.length} người chơi sống:</h3>`;
+            alive.forEach(i => {
+                status.innerHTML += `<div>${game.players[i].name}</div>`;
+            });
+        }
+
+        function updateTurnInfo(attacker, left, right) {
+            let turnInfo = document.getElementById('turn-info');
+            turnInfo.innerHTML = `
+                <div class="turn">
+                    <strong>Lượt ${game.turn}: ${attacker}</strong><br>
+                    Chọn mục tiêu:<br>
+                    <button onclick="selectTarget(0)">1. ${left}</button>
+                    <button onclick="selectTarget(1)">2. ${right}</button>
+                </div>
+            `;
+            document.getElementById('guess-form').style.display = 'none';
+        }
+
+        let selectedTarget = null;
+        function selectTarget(choice) {
+            let [leftI, rightI] = game.getNeighbors(game.currentIndex);
+            selectedTarget = choice === 0 ? leftI : rightI;
+            document.getElementById('target-name').textContent = game.players[selectedTarget].name;
+            document.getElementById('guess-form').style.display = 'block';
+        }
+
+        function submitGuess() {
+            let guess = document.getElementById('guess-input').value;
+            if (guess.length !== 10 || !/^\d+$/.test(guess)) {
+                alert("Phải nhập đúng 10 chữ số!");
+                return;
+            }
+            let ended = game.makeGuess(selectedTarget, guess);
+            updateStatus();
+            if (ended) {
+                document.getElementById('turn-info').innerHTML = '<h2>Trò chơi kết thúc!</h2>';
+                document.getElementById('guess-form').style.display = 'none';
+            } else {
+                game.nextTurn();
+            }
+            document.getElementById('guess-input').value = '';
+        }
+
+        function updateReports() {
+            let reportsDiv = document.getElementById('reports');
+            reportsDiv.innerHTML = '<h3>Reports:</h3>';
+            game.reports.forEach(r => {
+                reportsDiv.innerHTML += `<div class="report">${r}</div>`;
+            });
+        }
+    </script>
+</body>
+</html>
