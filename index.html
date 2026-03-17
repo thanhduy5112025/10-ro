@@ -81,6 +81,21 @@
             flex: 1;
             min-width: 120px;
         }
+        .code-length-selector {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .code-length-selector label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .code-length-selector button {
+            margin: 5px;
+            min-width: 80px;
+        }
+        .code-length-selector button.active {
+            background: #28a745;
+        }
         #guess-form {
             margin-top: 20px;
         }
@@ -112,7 +127,14 @@
 <body>
     <h1>LifeCode Game</h1>
     <div id="setup">
-        <h2>Thiết lập người chơi</h2>
+        <h2>Thiết lập trò chơi</h2>
+        <div class="code-length-selector">
+            <label>Chọn độ dài mật mã:</label>
+            <button onclick="setCodeLength(5)" id="btn-5">5 chữ số</button>
+            <button onclick="setCodeLength(6)" id="btn-6">6 chữ số</button>
+            <button onclick="setCodeLength(10)" id="btn-10" class="active">10 chữ số</button>
+        </div>
+        <h3>Người chơi</h3>
         <div id="players-list">
             <!-- Players will be added here -->
         </div>
@@ -126,7 +148,7 @@
         <div id="turn-info"></div>
         <div id="guess-form" style="display: none;">
             <label>Mục tiêu: <span id="target-name"></span></label><br>
-            <input type="text" id="guess-input" placeholder="Nhập 10 chữ số" maxlength="10"><br>
+            <input type="text" id="guess-input" placeholder="Nhập mã số" maxlength="10"><br>
             <button onclick="submitGuess()">Đoán</button>
         </div>
         <div id="reports"></div>
@@ -135,6 +157,7 @@
     <script>
         let players = [];
         let game = null;
+        let codeLength = 10;
 
         class Player {
             constructor(name, code) {
@@ -145,11 +168,12 @@
         }
 
         class LifeCodeGame {
-            constructor(players) {
+            constructor(players, codeLength) {
                 this.players = players;
                 this.currentIndex = 0;
                 this.turn = 1;
                 this.reports = [];
+                this.codeLength = codeLength;
             }
 
             evaluateGuess(secret, guess) {
@@ -199,7 +223,7 @@
                 let report = `${attacker.name} đoán ${target.name} là ${guess}, ${cp} đúng vị trí | ${cwp} đúng số sai vị trí`;
                 this.reports.push(report);
                 updateReports();
-                if (cp === 10) {
+                if (cp === this.codeLength) {
                     target.alive = false;
                     let deathReport = `${target.name} đã bị loại.`;
                     this.reports.push(deathReport);
@@ -235,11 +259,22 @@
 
         function addPlayer() {
             let name = prompt("Tên người chơi:");
-            let code = prompt("Mã số (10 chữ số):");
-            if (name && code && code.length === 10) {
+            let code = prompt(`Mã số (${codeLength} chữ số):`);
+            if (name && code && code.length === codeLength && /^\d+$/.test(code)) {
                 players.push(new Player(name, code));
                 updatePlayersList();
+            } else {
+                alert(`Mã số phải có đúng ${codeLength} chữ số và chỉ chứa số!`);
             }
+        }
+
+        function setCodeLength(length) {
+            codeLength = length;
+            // Cập nhật button active
+            document.getElementById('btn-5').classList.remove('active');
+            document.getElementById('btn-6').classList.remove('active');
+            document.getElementById('btn-10').classList.remove('active');
+            document.getElementById('btn-' + length).classList.add('active');
         }
 
         function updatePlayersList() {
@@ -255,9 +290,11 @@
                 alert("Cần ít nhất 2 người chơi!");
                 return;
             }
-            game = new LifeCodeGame(players);
+            game = new LifeCodeGame(players, codeLength);
             document.getElementById('setup').style.display = 'none';
             document.getElementById('game').style.display = 'block';
+            // Cập nhật maxlength input
+            document.getElementById('guess-input').maxLength = codeLength;
             updateStatus();
             game.nextTurn();
         }
@@ -294,8 +331,8 @@
 
         function submitGuess() {
             let guess = document.getElementById('guess-input').value;
-            if (guess.length !== 10 || !/^\d+$/.test(guess)) {
-                alert("Phải nhập đúng 10 chữ số!");
+            if (guess.length !== codeLength || !/^\d+$/.test(guess)) {
+                alert(`Phải nhập đúng ${codeLength} chữ số!`);
                 return;
             }
             let ended = game.makeGuess(selectedTarget, guess);
